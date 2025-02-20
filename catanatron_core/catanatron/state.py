@@ -611,6 +611,7 @@ def apply_action(state: State, action: Action):
         state.current_prompt = ActionPrompt.PLAY_TURN
         state.playable_actions = generate_playable_actions(state)
     elif action.action_type == ActionType.OFFER_TRADE:
+        print("OFFER_TRADE")
         state.is_resolving_trade = True
         state.current_trade = (*action.value, state.current_turn_index)
 
@@ -622,6 +623,7 @@ def apply_action(state: State, action: Action):
 
         state.playable_actions = generate_playable_actions(state)
     elif action.action_type == ActionType.ACCEPT_TRADE:
+        print("ACCEPT_TRADE")
         # add yourself to self.acceptees
         index = state.colors.index(action.color)
         new_acceptess = list(state.acceptees)
@@ -644,6 +646,7 @@ def apply_action(state: State, action: Action):
 
         state.playable_actions = generate_playable_actions(state)
     elif action.action_type == ActionType.REJECT_TRADE:
+        print("REJECT_TRADE")
         try:
             # keep going around table w/o asking yourself or players that have answered
             state.current_player_index = next(

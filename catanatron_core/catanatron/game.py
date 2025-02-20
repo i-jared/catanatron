@@ -6,12 +6,14 @@ import uuid
 import random
 import sys
 from typing import List, Union, Optional
+import asyncio
 
 from catanatron.models.enums import Action, ActionPrompt, ActionType
 from catanatron.state import State, apply_action
 from catanatron.state_functions import player_key, player_has_rolled
 from catanatron.models.map import CatanMap
 from catanatron.models.player import Color, Player
+from catanatron.models.message import Message
 
 # To timeout RandomRobots from getting stuck...
 TURNS_LIMIT = 1000
@@ -112,8 +114,36 @@ class Game:
             self.id = str(uuid.uuid4())
             self.vps_to_win = vps_to_win
             self.state = State(players, catan_map, discard_limit=discard_limit)
+            self.message_tasks = []  # Keep track of message handling tasks
 
-    def play(self, accumulators=[], decide_fn=None):
+    async def add_message(self, message: Message):
+        """Add a message to the game and notify relevant players"""
+        if message.to_color is None:
+            # Broadcast message
+            tasks = [
+                player.receive_message(message) 
+                for player in self.state.players
+                if player.color != message.from_color
+            ]
+        else:
+            # Direct message
+            recipient = next(
+                player for player in self.state.players 
+                if player.color == message.to_color
+            )
+            tasks = [recipient.receive_message(message)]
+
+        # Create tasks for message handling
+        self.message_tasks.extend([asyncio.create_task(task) for task in tasks])
+
+    async def cleanup_messages(self):
+        """Cleanup any pending message tasks"""
+        for task in self.message_tasks:
+            task.cancel()
+        await asyncio.gather(*self.message_tasks, return_exceptions=True)
+        self.message_tasks.clear()
+
+    async def play(self, accumulators=[], decide_fn=None):
         """Executes game until a player wins or exceeded TURNS_LIMIT.
 
         Args:
@@ -129,12 +159,13 @@ class Game:
         for accumulator in accumulators:
             accumulator.before(self)
         while self.winning_color() is None and self.state.num_turns < TURNS_LIMIT:
-            self.play_tick(decide_fn=decide_fn, accumulators=accumulators)
+            await self.play_tick(decide_fn=decide_fn, accumulators=accumulators)
         for accumulator in accumulators:
             accumulator.after(self)
+        await self.cleanup_messages()
         return self.winning_color()
 
-    def play_tick(self, decide_fn=None, accumulators=[]):
+    async def play_tick(self, decide_fn=None, accumulators=[]):
         """Advances game by one ply (player decision).
 
         Args:
@@ -148,9 +179,9 @@ class Game:
         actions = self.state.playable_actions
 
         action = (
-            decide_fn(player, self, actions)
+            await decide_fn(player, self, actions)
             if decide_fn is not None
-            else player.decide(self, actions)
+            else await player.decide(self, actions)
         )
         # Call accumulator.step here, because we want game_before_action, action
         if len(accumulators) > 0:

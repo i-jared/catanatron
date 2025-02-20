@@ -4,6 +4,7 @@ from rich.table import Table
 
 from catanatron.models.player import RandomPlayer
 from catanatron.players.weighted_random import WeightedRandomPlayer
+from catanatron.players.llm_player import LLMPlayer
 
 # from catanatron_experimental.mcts_score_collector import (
 #     MCTSScoreCollector,
@@ -94,6 +95,13 @@ CLI_PLAYERS = [
         "SameTurnAlphaBetaPlayer",
         "AlphaBeta but searches only within turn",
         SameTurnAlphaBetaPlayer,
+    ),
+    CliPlayer(
+        "LLM",
+        "LLMPlayer",
+        "Player that is an LLM powered agent. Uses memory, strategy, and reasoning "
+        + "to decide on the best action to take.",
+        LLMPlayer,
     ),
 ]
 

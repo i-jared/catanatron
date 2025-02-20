@@ -65,7 +65,7 @@ class CustomTimeRemainingColumn(TimeRemainingColumn):
     default="R,R,R,R",
     help="""
     Comma-separated players to use. Use ':' to set player-specific params.
-    (e.g. --players=R,G:25,AB:2:C,W).\n
+    (e.g. --players=R,G:25,AB:2:C,W,LLM).\n
     See player legend with '--help-players'.
     """,
 )
