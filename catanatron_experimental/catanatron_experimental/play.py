@@ -314,12 +314,15 @@ async def play_batch(
         console=console,
     ) as progress:
         main_task = progress.add_task(f"Playing {num_games} games...", total=num_games)
-        player_tasks = [
-            progress.add_task(
-                rich_player_name(player), total=num_games, show_time=False
-            )
-            for player in players
-        ]
+        # Only show player progress bars if more than 1 game
+        player_tasks = []
+        if num_games > 1:
+            player_tasks = [
+                progress.add_task(
+                    rich_player_name(player), total=num_games, show_time=False
+                )
+                for player in players
+            ]
 
         async for i, game in play_batch_core(num_games, players, game_config, accumulators):
             winning_color = game.winning_color()
@@ -341,7 +344,7 @@ async def play_batch(
                 table.add_row(*row)
 
             progress.update(main_task, advance=1)
-            if winning_color is not None:
+            if winning_color is not None and num_games > 1:  # Only update player tasks if more than 1 game
                 winning_index = list(map(lambda p: p.color, players)).index(
                     winning_color
                 )

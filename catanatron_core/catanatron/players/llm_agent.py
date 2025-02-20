@@ -118,10 +118,12 @@ class CatanTools:
             else:
                 error_msg = f"Invalid index. Please choose between 0 and {len(instance.playable_actions)-1}"
                 logger.warning(error_msg)
+                instance.pending_action = None  # Explicitly set to None on invalid index
                 return error_msg
         except ValueError:
             error_msg = "Please provide a valid number"
             logger.warning(error_msg)
+            instance.pending_action = None  # Explicitly set to None on invalid number
             return error_msg
 
     # Remove other action-specific tools since we're using select_action instead
@@ -188,7 +190,6 @@ class CatanAgent:
         logger.info("Agent created successfully")
 
     async def decide_action(self, game_state: Dict[str, Any], playable_actions: List[Action]) -> Action:
-        """Decides the next action to take based on game state"""
         logger.info(f"Deciding action for {self.player_color}")
         logger.debug(f"Game state: {game_state}")
         logger.info(f"Available actions: {[f'{i}: {a.action_type} {a.value}' for i, a in enumerate(playable_actions)]}")
@@ -197,7 +198,6 @@ class CatanAgent:
             logger.error("No playable actions available!")
             raise ValueError("No playable actions available")
         
-        # Add run metadata for better tracking
         config = {
             "configurable": {
                 "thread_id": str(game_state.get("game_id", "default")),
@@ -208,59 +208,41 @@ class CatanAgent:
                 }
             }
         }
-        logger.debug(f"Run config: {config}")
-        
-        # Store playable actions in tools
         self.tools.playable_actions = playable_actions
-        
-        # Format the input for the agent
         prompt = self._format_game_state(game_state, playable_actions)
-        logger.debug(f"Generated prompt: {prompt}")
         
-        # Get agent's decision
-        self.tools.pending_action = None
         try:
             logger.info("Starting agent decision process")
             chunks = []
-            stream = self.agent.stream(
-                {"messages": [HumanMessage(content=prompt)]},
-                config=config
-            )
+            self.tools.pending_action = None
+            valid_action_selected = False
             
-            # Process the stream
-            for chunk in stream:
+            stream = self.agent.stream({"messages": [HumanMessage(content=prompt)]}, config=config)
+            for chunk in stream:  # Sync iteration
                 chunks.append(chunk)
                 logger.debug(f"Agent stream chunk: {chunk}")
                 
-                # Process any generated messages
                 if hasattr(self.tools, "pending_message"):
                     logger.info(f"Processing pending message: {self.tools.pending_message}")
                     del self.tools.pending_message
                     
-                # Check if an action was decided
-                if hasattr(self.tools, "pending_action"):
-                    action = self.tools.pending_action
-                    if action is None:
-                        logger.warning("Agent selected None as action")
-                        continue
-                    logger.info(f"Action decided: {action}")
-                    return action
+                if hasattr(self.tools, "pending_action") and self.tools.pending_action is not None:
+                    logger.info(f"Action decided in stream: {self.tools.pending_action}")
+                    valid_action_selected = True
             
-            # Log the full conversation if no action was chosen
-            logger.warning("No action chosen by agent. Full conversation:")
+            if valid_action_selected and self.tools.pending_action in playable_actions:
+                return self.tools.pending_action
+            
+            logger.warning("No valid action chosen by agent. Full conversation:")
             for i, chunk in enumerate(chunks):
                 logger.warning(f"Chunk {i}: {chunk}")
-            
-            # If no action was chosen, pick first available
             logger.warning("Defaulting to first available action")
             return playable_actions[0]
-            
+        
         except Exception as e:
             logger.error(f"Error during agent decision: {str(e)}", exc_info=True)
-            logger.error("Full game state for debugging:")
             logger.error(f"Game state: {game_state}")
             logger.error(f"Playable actions: {playable_actions}")
-            # Fallback to first action if there's an error
             logger.warning("Error occurred, falling back to first available action")
             return playable_actions[0]
 

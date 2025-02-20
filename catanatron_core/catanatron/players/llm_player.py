@@ -26,34 +26,44 @@ class LLMPlayer(Player):
         # Convert game state to dict for agent
         game_state = self._get_game_state(game)
         
-        # Handle initial building period differently
         if game.state.is_initial_build_phase:
-            # Get action from agent
-            action = await self.agent.decide_action(game_state, playable_actions)
-            executed_action, playable_actions = await self.execute_action(action)
-            
-            # If we just built a settlement, we must build a road
-            if action.action_type == ActionType.BUILD_SETTLEMENT:
-                # Get road action from agent
-                road_action = await self.agent.decide_action(self._get_game_state(game), playable_actions)
-                executed_action, playable_actions = await self.execute_action(road_action)
-            return
-        
-        # Normal turn - let agent make decisions until it chooses to end turn
-        while True:
-            action = await self.agent.decide_action(game_state, playable_actions)
-            executed_action, playable_actions = await self.execute_action(action)
-            
-            # Update game state for next decision
-            game_state = self._get_game_state(game)
-            
-            # If only option is to end turn, or agent chose to end turn, break
-            if (len(playable_actions) == 1 and 
-                playable_actions[0].action_type == ActionType.END_TURN):
-                await self.execute_action(playable_actions[0])
+            # Initial building phase - one settlement + road pair per turn
+            while True:
+                action = await self.agent.decide_action(game_state, playable_actions)
+                if action is None or action not in playable_actions:
+                    # If agent returns invalid action, choose first valid action
+                    action = playable_actions[0]
+                
+                executed_action, playable_actions = await self.execute_action(action)
+                
+                # If we just built a settlement, we must build a road
+                if action.action_type == ActionType.BUILD_SETTLEMENT:
+                    # Get road action from agent
+                    road_action = await self.agent.decide_action(self._get_game_state(game), playable_actions)
+                    if road_action is None or road_action not in playable_actions:
+                        road_action = playable_actions[0]  # Should be road action
+                    executed_action, playable_actions = await self.execute_action(road_action)
                 break
-            elif action.action_type == ActionType.END_TURN:
-                break
+        else:
+            # Normal turn - let agent make decisions until it chooses to end turn
+            while True:
+                action = await self.agent.decide_action(game_state, playable_actions)
+                if action is None or action not in playable_actions:
+                    # If agent returns invalid action, choose first valid action
+                    action = playable_actions[0]
+                
+                executed_action, playable_actions = await self.execute_action(action)
+                
+                # Update game state for next decision
+                game_state = self._get_game_state(game)
+                
+                # If only option is to end turn, or agent chose to end turn, break
+                if (len(playable_actions) == 1 and 
+                    playable_actions[0].action_type == ActionType.END_TURN):
+                    await self.execute_action(playable_actions[0])
+                    break
+                elif action.action_type == ActionType.END_TURN:
+                    break
 
     async def handle_message(self, message: Message):
         """Handle incoming messages by updating agent memory"""
