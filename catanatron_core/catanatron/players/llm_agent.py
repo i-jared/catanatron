@@ -46,6 +46,20 @@ class CatanTools:
         self.memory = memory
         self.playable_actions = []  # Store available actions
         
+        # Initialize base tools that are always available
+        self.base_tools = [
+            self.update_game_memory,
+            self.update_strategy,
+            # TODO: add send_message tool back in
+            # self.send_message,
+            self.select_action,
+        ]
+        
+    @property
+    def available_tools(self):
+        """Returns list of currently available tools"""
+        return self.base_tools
+        
     @tool
     def update_game_memory(self, key: str, value: str) -> str:
         """Updates the game memory with new information. Use this to remember important game state."""
@@ -70,36 +84,6 @@ class CatanTools:
         return f"Message queued: {content}"
 
     @tool
-    def build_settlement(self, node_id: str) -> str:
-        """Builds a settlement at the specified node"""
-        self.pending_action = Action(
-            color=self.player_color,
-            action_type=ActionType.BUILD_SETTLEMENT,
-            value=node_id
-        )
-        return f"Settlement build action queued at node {node_id}"
-
-    @tool
-    def build_city(self, node_id: str) -> str:
-        """Builds a city at the specified node"""
-        self.pending_action = Action(
-            color=self.player_color, 
-            action_type=ActionType.BUILD_CITY,
-            value=node_id
-        )
-        return f"City build action queued at node {node_id}"
-
-    @tool
-    def build_road(self, edge_id: str) -> str:
-        """Builds a road at the specified edge"""
-        self.pending_action = Action(
-            color=self.player_color,
-            action_type=ActionType.BUILD_ROAD,
-            value=edge_id
-        )
-        return f"Road build action queued at edge {edge_id}"
-
-    @tool
     def select_action(self, action_index: int) -> str:
         """Selects an action from the list of available actions by index"""
         try:
@@ -112,7 +96,7 @@ class CatanTools:
         except ValueError:
             return "Please provide a valid number"
 
-    # Add more tools for other actions...
+    # Remove other action-specific tools since we're using select_action instead
 
 class CatanAgent:
     """LLM-powered agent for playing Catan"""
@@ -182,10 +166,10 @@ class CatanAgent:
             print(f"Error initializing LLM: {str(e)}")
             raise ValueError(f"Failed to initialize {provider} LLM. Check your API key and try again.")
         
-        # Create the agent
+        # Create the agent with base tools
         self.agent = create_react_agent(
             llm=self.llm,
-            tools=self.tools.__class__.__dict__.values(),
+            tools=self.tools.available_tools,
             checkpointer=self.memory_saver
         )
 
@@ -235,7 +219,6 @@ class CatanAgent:
 
     def _format_game_state(self, game_state: Dict[str, Any], playable_actions: List[Action]) -> str:
         """Formats the game state and memory into a prompt for the agent"""
-        # Include game memory and strategy memory in the prompt
         game_memory = self.memory.game_memory
         strategy_memory = self.memory.strategy_memory
         
@@ -259,8 +242,14 @@ class CatanAgent:
         {action_list}
         
         What action should I take? Consider the game state, memory, and available actions carefully.
-        Use the select_action tool with the index of your chosen action.
-        You must choose from the available actions listed above.
+        You have these tools available:
+        - select_action: Choose an action from the numbered list above
+        - update_game_memory: Store important information about the game state
+        - update_strategy: Remember effective strategies for future reference
+        - send_message: Communicate with other players
+        
+        First, analyze the situation and update your memory if needed.
+        Then, select an action from the available options using the select_action tool.
         """
 
 class GeminiWrapper:
