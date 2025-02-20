@@ -118,6 +118,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+catan/
 
 # Spyder project settings
 .spyderproject

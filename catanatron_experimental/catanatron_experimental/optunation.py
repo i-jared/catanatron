@@ -9,7 +9,7 @@ from catanatron_experimental.machine_learning.players.value import (
 from catanatron_experimental.catanatron_experimental.play import play_batch
 
 
-def objective(trial):
+async def objective(trial):
     weights = {
         # Where to place. Note winning is best at all costs
         "public_vps": trial.suggest_float("public_vps", 0.0, 100.0),
@@ -39,7 +39,7 @@ def objective(trial):
         ValueFunctionPlayer(Color.RED, "C", params=DEFAULT_WEIGHTS),
         ValueFunctionPlayer(Color.BLUE, "C", params=weights),
     ]
-    wins, results_by_player = play_batch(200, players)
+    wins, results_by_player = await play_batch(200, players)
     vps = results_by_player[players[1].color]
     avg_vps = sum(vps) / len(vps)
     return 1000 * wins[players[1].color] + avg_vps

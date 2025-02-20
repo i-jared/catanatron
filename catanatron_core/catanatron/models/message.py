@@ -3,7 +3,7 @@ from typing import Optional
 from enum import Enum
 from datetime import datetime
 
-from catanatron.models.player import Color
+from catanatron.models.enums import Color
 
 class MessageType(Enum):
     TRADE_PROPOSAL = "TRADE_PROPOSAL"

@@ -35,6 +35,9 @@ from catanatron_experimental.cli.accumulators import (
 )
 from catanatron_experimental.cli.simulation_accumulator import SimulationAccumulator
 
+import asyncio
+from functools import wraps
+
 
 custom_theme = Theme(
     {
@@ -58,7 +61,15 @@ class CustomTimeRemainingColumn(TimeRemainingColumn):
         return super().render(task)
 
 
+def async_command(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+    return wrapper
+
+
 @click.command()
+@async_command
 @click.option("-n", "--num", default=5, help="Number of games to play.")
 @click.option(
     "--players",
@@ -128,7 +139,7 @@ class CustomTimeRemainingColumn(TimeRemainingColumn):
     help="Show player codes and exits.",
     is_flag=True,
 )
-def simulate(
+async def simulate(
     num,
     players,
     code,
@@ -180,7 +191,7 @@ def simulate(
 
     output_options = OutputOptions(output, csv, json, db)
     game_config = GameConfigOptions(config_discard_limit, config_vps_to_win, config_map)
-    play_batch(
+    return await play_batch(
         num,
         players,
         output_options,
@@ -226,12 +237,12 @@ def rich_color(color):
     return f"[{style}]{color.value}[/{style}]"
 
 
-def play_batch_core(num_games, players, game_config, accumulators=[]):
+async def play_batch_core(num_games, players, game_config, accumulators=[]):
     for accumulator in accumulators:
         if isinstance(accumulator, SimulationAccumulator):
             accumulator.before_all()
 
-    for _ in range(num_games):
+    for i in range(num_games):
         for player in players:
             player.reset_state()
         catan_map = build_map(game_config.catan_map)
@@ -241,15 +252,15 @@ def play_batch_core(num_games, players, game_config, accumulators=[]):
             vps_to_win=game_config.vps_to_win,
             catan_map=catan_map,
         )
-        game.play(accumulators)
-        yield game
+        await game.play(accumulators)
+        yield i, game
 
     for accumulator in accumulators:
         if isinstance(accumulator, SimulationAccumulator):
             accumulator.after_all()
 
 
-def play_batch(
+async def play_batch(
     num_games,
     players,
     output_options=None,
@@ -274,7 +285,7 @@ def play_batch(
         accumulators.append(accumulator_class(players=players, game_config=game_config))
 
     if quiet:
-        for _ in play_batch_core(num_games, players, game_config, accumulators):
+        async for i, game in play_batch_core(num_games, players, game_config, accumulators):
             pass
         return (
             dict(statistics_accumulator.wins),
@@ -310,9 +321,7 @@ def play_batch(
             for player in players
         ]
 
-        for i, game in enumerate(
-            play_batch_core(num_games, players, game_config, accumulators)
-        ):
+        async for i, game in play_batch_core(num_games, players, game_config, accumulators):
             winning_color = game.winning_color()
 
             if (num_games - last_n) < (i + 1):

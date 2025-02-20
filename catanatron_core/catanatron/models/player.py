@@ -4,15 +4,7 @@ import asyncio
 from typing import Optional
 
 from catanatron.models.message import Message
-
-
-class Color(Enum):
-    """Enum to represent the colors in the game"""
-
-    RED = "RED"
-    BLUE = "BLUE"
-    ORANGE = "ORANGE"
-    WHITE = "WHITE"
+from catanatron.models.enums import ActionType, Color
 
 
 class Player:
@@ -34,16 +26,35 @@ class Player:
         self.is_bot = is_bot
         self.message_queue = asyncio.Queue()
         self.pending_responses = {}  # message_id -> Future
+        self.game = None
 
     async def decide(self, game, playable_actions):
-        """Should return one of the playable_actions or
-        an OFFER_TRADE action if its your turn and you have already rolled.
+        """Should handle the player's turn until they choose to end it.
+        
+        This method should use execute_action() to perform actions until
+        choosing to end the turn.
 
         Args:
             game (Game): complete game state. read-only.
-            playable_actions (Iterable[Action]): options right now
+            playable_actions (Iterable[Action]): initial options
         """
         raise NotImplementedError
+
+    async def execute_action(self, action):
+        """Execute an action in the game
+        
+        Args:
+            action (Action): The action to execute
+            
+        Returns:
+            Action: The executed action
+            list[Action]: New playable actions
+        """
+        if not self.game:
+            raise ValueError("Player not in a game")
+            
+        executed_action = self.game.execute(action)
+        return executed_action, self.game.state.playable_actions
 
     async def send_message(self, game, message):
         """Send a message to another player(s)"""
@@ -74,6 +85,7 @@ class Player:
         """Hook for resetting state between games"""
         self.message_queue = asyncio.Queue()
         self.pending_responses.clear()
+        self.game = None
 
     def __repr__(self):
         return f"{type(self).__name__}:{self.color.value}"
@@ -90,16 +102,18 @@ class HumanPlayer(Player):
     """Human player that selects which action to take using standard input"""
 
     async def decide(self, game, playable_actions):
-        for i, action in enumerate(playable_actions):
-            print(f"{i}: {action.action_type} {action.value}")
-        i = None
-        while i is None or (i < 0 or i >= len(playable_actions)):
-            print("Please enter a valid index:")
-            try:
-                x = input(">>> ")
-                i = int(x)
-            except ValueError:
-                pass
+        action = None
+        while action is not ActionType.END_TURN:
+            for i, action in enumerate(playable_actions):
+                print(f"{i}: {action.action_type} {action.value}")
+            i = None
+            while i is None or (i < 0 or i >= len(playable_actions)):
+                print("Please enter a valid index:")
+                try:
+                    x = input(">>> ")
+                    i = int(x)
+                except ValueError:
+                    pass
 
         return playable_actions[i]
 
@@ -108,4 +122,14 @@ class RandomPlayer(Player):
     """Random AI player that selects an action randomly from the list of playable_actions"""
 
     async def decide(self, game, playable_actions):
-        return random.choice(playable_actions)
+        while True:
+            action = random.choice(playable_actions)
+            executed_action, playable_actions = await self.execute_action(action)
+            
+            # If only option is to end turn, or chose to end turn, break
+            if (len(playable_actions) == 1 and 
+                playable_actions[0].action_type == ActionType.END_TURN):
+                await self.execute_action(playable_actions[0])
+                break
+            elif action.action_type == ActionType.END_TURN:
+                break

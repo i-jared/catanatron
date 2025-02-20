@@ -2,6 +2,15 @@ from enum import Enum
 from collections import namedtuple
 from typing import List, Literal, Final
 
+# Add Color enum at the top level
+class Color(Enum):
+    RED = "RED"
+    BLUE = "BLUE"
+    ORANGE = "ORANGE"
+    WHITE = "WHITE"
+    
+    def __repr__(self):
+        return f"Color.{self.value}"
 
 FastResource = Literal["WOOD", "BRICK", "SHEEP", "WHEAT", "ORE"]
 FastDevCard = Literal[
@@ -137,10 +146,34 @@ class LLMTool(Enum):
     SEND_MESSAGE = "send_message"
 
     # Add all ActionType enums
-    @classmethod
-    def _add_action_types(cls):
-        for action in ActionType:
-            cls._value2member_map_[action.name] = cls(action.value)
+    ROLL = "ROLL"  # value is None. Log instead sets it to (int, int) rolled.
+    MOVE_ROBBER = "MOVE_ROBBER"  # value is (coordinate, Color|None). Log has extra element of card stolen.
+    DISCARD = "DISCARD"  # value is None|Resource[]. TODO: Should always be Resource[].
 
-# Call the method to add ActionType enums
-LLMTool._add_action_types()
+    # Building/Buying
+    BUILD_ROAD = "BUILD_ROAD"  # value is edge_id
+    BUILD_SETTLEMENT = "BUILD_SETTLEMENT"  # value is node_id
+    BUILD_CITY = "BUILD_CITY"  # value is node_id
+    BUY_DEVELOPMENT_CARD = "BUY_DEVELOPMENT_CARD"  # value is None. Log value is card
+
+    # Dev Card Plays
+    PLAY_KNIGHT_CARD = "PLAY_KNIGHT_CARD"  # value is None
+    PLAY_YEAR_OF_PLENTY = "PLAY_YEAR_OF_PLENTY"  # value is (Resource, Resource)
+    PLAY_MONOPOLY = "PLAY_MONOPOLY"  # value is Resource
+    PLAY_ROAD_BUILDING = "PLAY_ROAD_BUILDING"  # value is None
+
+    # ===== Trade
+    # MARITIME_TRADE value is 5-resouce tuple, where last resource is resource asked.
+    #   resources in index 2 and 3 might be None, denoting a port-trade.
+    MARITIME_TRADE = "MARITIME_TRADE"
+    # Domestic Trade (player to player trade)
+    # Values for all three is a 10-resource tuple, first 5 is offered freqdeck, last 5 is
+    #   receiving freqdeck.
+    OFFER_TRADE = "OFFER_TRADE"
+    ACCEPT_TRADE = "ACCEPT_TRADE"
+    REJECT_TRADE = "REJECT_TRADE"
+    # CONFIRM_TRADE value is 11-tuple. first 10 as in OFFER_TRADE, last is color of accepting player
+    CONFIRM_TRADE = "CONFIRM_TRADE"
+    CANCEL_TRADE = "CANCEL_TRADE"  # value is None
+
+    END_TURN = "END_TURN"  # value is None

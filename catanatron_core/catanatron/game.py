@@ -115,6 +115,10 @@ class Game:
             self.vps_to_win = vps_to_win
             self.state = State(players, catan_map, discard_limit=discard_limit)
             self.message_tasks = []  # Keep track of message handling tasks
+            
+            # Set game reference in players
+            for player in players:
+                player.game = self
 
     async def add_message(self, message: Message):
         """Add a message to the game and notify relevant players"""
@@ -143,7 +147,7 @@ class Game:
         await asyncio.gather(*self.message_tasks, return_exceptions=True)
         self.message_tasks.clear()
 
-    async def play(self, accumulators=[], decide_fn=None):
+    async def play(self, accumulators=[]):
         """Executes game until a player wins or exceeded TURNS_LIMIT.
 
         Args:
@@ -151,43 +155,20 @@ class Game:
                 Their .consume method will be called with every action, and
                 their .finalize method will be called when the game ends (if it ends)
                 Defaults to [].
-            decide_fn (function, optional): Function to overwrite current player's decision with.
-                Defaults to None.
         Returns:
             Color: winning color or None if game exceeded TURNS_LIMIT
         """
         for accumulator in accumulators:
             accumulator.before(self)
+            
         while self.winning_color() is None and self.state.num_turns < TURNS_LIMIT:
-            await self.play_tick(decide_fn=decide_fn, accumulators=accumulators)
+            current_player = self.state.current_player()
+            await current_player.decide(self, self.state.playable_actions)
+            
         for accumulator in accumulators:
             accumulator.after(self)
         await self.cleanup_messages()
         return self.winning_color()
-
-    async def play_tick(self, decide_fn=None, accumulators=[]):
-        """Advances game by one ply (player decision).
-
-        Args:
-            decide_fn (function, optional): Function to overwrite current player's decision with.
-                Defaults to None.
-
-        Returns:
-            Action: Final action (modified to be used as Log)
-        """
-        player = self.state.current_player()
-        actions = self.state.playable_actions
-
-        action = (
-            await decide_fn(player, self, actions)
-            if decide_fn is not None
-            else await player.decide(self, actions)
-        )
-        # Call accumulator.step here, because we want game_before_action, action
-        if len(accumulators) > 0:
-            for accumulator in accumulators:
-                accumulator.step(self, action)
-        return self.execute(action)
 
     def execute(self, action: Action, validate_action: bool = True) -> Action:
         """Internal call that carries out decided action by player"""

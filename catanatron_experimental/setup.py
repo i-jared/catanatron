@@ -15,7 +15,8 @@ setuptools.setup(
     ],
     python_requires=">=3.6",
     install_requires=[
-        "rich"
+        "rich",
+        "langchain-google-genai"
     ],  # careful including heavy ml-libs since might break heroku build
     entry_points={
         "console_scripts": ["catanatron-play=catanatron_experimental.play:simulate"],

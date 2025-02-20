@@ -11,14 +11,14 @@ from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from catanatron_experimental.catanatron_experimental.play import play_batch
 
 
-def objective(config):
+async def objective(config):
     players = [
         # AlphaBetaPlayer(Color.RED, 2, True),
         # AlphaBetaPlayer(Color.BLUE, 2, True, "C", weights),
         ValueFunctionPlayer(Color.RED, "C", params=DEFAULT_WEIGHTS),
         ValueFunctionPlayer(Color.BLUE, "C", params=config),
     ]
-    wins, results_by_player = play_batch(100, players)
+    wins, results_by_player = await play_batch(100, players)
     vps = results_by_player[players[1].color]
     avg_vps = sum(vps) / len(vps)
     score = 100 * wins[players[1].color] + avg_vps
