@@ -129,3 +129,18 @@ for that information needed for fully reproducing a game.
 
 See more on ActionType.
 """
+
+class LLMTool(Enum):
+    """Available tools for the LLM agent to use"""
+    UPDATE_GAME_MEMORY = "update_game_memory"
+    UPDATE_STRATEGY = "update_strategy"
+    SEND_MESSAGE = "send_message"
+
+    # Add all ActionType enums
+    @classmethod
+    def _add_action_types(cls):
+        for action in ActionType:
+            cls._value2member_map_[action.name] = cls(action.value)
+
+# Call the method to add ActionType enums
+LLMTool._add_action_types()

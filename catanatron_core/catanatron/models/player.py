@@ -3,6 +3,8 @@ from enum import Enum
 import asyncio
 from typing import Optional
 
+from catanatron.models.message import Message
+
 
 class Color(Enum):
     """Enum to represent the colors in the game"""
