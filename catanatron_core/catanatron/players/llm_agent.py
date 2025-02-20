@@ -44,6 +44,7 @@ class CatanTools:
     def __init__(self, player_color: str, memory: CatanMemory):
         self.player_color = player_color
         self.memory = memory
+        self.playable_actions = []  # Store available actions
         
     @tool
     def update_game_memory(self, key: str, value: str) -> str:
@@ -97,6 +98,19 @@ class CatanTools:
             value=edge_id
         )
         return f"Road build action queued at edge {edge_id}"
+
+    @tool
+    def select_action(self, action_index: int) -> str:
+        """Selects an action from the list of available actions by index"""
+        try:
+            index = int(action_index)
+            if 0 <= index < len(self.playable_actions):
+                self.pending_action = self.playable_actions[index]
+                return f"Selected action: {self.pending_action}"
+            else:
+                return f"Invalid index. Please choose between 0 and {len(self.playable_actions)-1}"
+        except ValueError:
+            return "Please provide a valid number"
 
     # Add more tools for other actions...
 
@@ -189,32 +203,47 @@ class CatanAgent:
             }
         }
         
+        # Store playable actions in tools
+        self.tools.playable_actions = playable_actions
+        
         # Format the input for the agent
         prompt = self._format_game_state(game_state, playable_actions)
         
         # Get agent's decision
         self.tools.pending_action = None
-        for chunk in self.agent.stream(
-            {"messages": [HumanMessage(content=prompt)]},
-            config=config
-        ):
-            # Process any generated messages
-            if hasattr(self.tools, "pending_message"):
-                # Handle message sending...
-                del self.tools.pending_message
-                
-            # Check if an action was decided
-            if hasattr(self.tools, "pending_action"):
-                return self.tools.pending_action
-                
-        # If no action was chosen, pick first available
-        return playable_actions[0]
+        try:
+            for chunk in self.agent.stream(
+                {"messages": [HumanMessage(content=prompt)]},
+                config=config
+            ):
+                # Process any generated messages
+                if hasattr(self.tools, "pending_message"):
+                    # Handle message sending...
+                    del self.tools.pending_message
+                    
+                # Check if an action was decided
+                if hasattr(self.tools, "pending_action"):
+                    return self.tools.pending_action
+                    
+            # If no action was chosen, pick first available
+            return playable_actions[0]
+            
+        except Exception as e:
+            print(f"Error during agent decision: {str(e)}")
+            # Fallback to first action if there's an error
+            return playable_actions[0]
 
     def _format_game_state(self, game_state: Dict[str, Any], playable_actions: List[Action]) -> str:
         """Formats the game state and memory into a prompt for the agent"""
         # Include game memory and strategy memory in the prompt
         game_memory = self.memory.game_memory
         strategy_memory = self.memory.strategy_memory
+        
+        # Format available actions with indices
+        action_list = "\n".join(
+            f"{i}: {action.action_type} {action.value}" 
+            for i, action in enumerate(playable_actions)
+        )
         
         return f"""
         Game State:
@@ -227,10 +256,11 @@ class CatanAgent:
         {strategy_memory}
         
         Available Actions:
-        {playable_actions}
+        {action_list}
         
         What action should I take? Consider the game state, memory, and available actions carefully.
-        Use the available tools to update memory and execute actions.
+        Use the select_action tool with the index of your chosen action.
+        You must choose from the available actions listed above.
         """
 
 class GeminiWrapper:
