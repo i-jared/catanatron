@@ -85,10 +85,38 @@ class LLMPlayer(Player):
             if k.startswith(prefix)
         }
         
+        # Get recent actions by other players
+        recent_actions = []
+        if len(game.state.actions) > 0:
+            # Start from the most recent action
+            actions_iter = reversed(game.state.actions)
+            last_turn_index = None
+            
+            for action in actions_iter:
+                # Skip own actions
+                if action.color == self.color:
+                    continue
+                    
+                # If we haven't seen a turn index yet, set it
+                if last_turn_index is None:
+                    last_turn_index = game.state.current_turn_index
+                    
+                # If we've moved to a previous turn, stop
+                current_player_index = game.state.colors.index(action.color)
+                if current_player_index > last_turn_index:
+                    break
+                    
+                # Add the action to our list
+                recent_actions.append(action)
+                
+            # Reverse the list so actions are in chronological order
+            recent_actions.reverse()
+        
         # Structure the state data in a more logical way
         return {
             "game_id": id(game),
             "player_number": player_num,
+            "recent_actions": recent_actions,
             "victory_points": {
                 "total": player_state["VICTORY_POINTS"],
                 "actual": player_state["ACTUAL_VICTORY_POINTS"],
