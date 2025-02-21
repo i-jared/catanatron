@@ -275,7 +275,8 @@ class CatanAgent:
         
         config = {
             "configurable": {
-                "thread_id": f"{game_state.get('game_id', 'default')}-{game_state.get('turn_number', '0')}",
+                # TODO: get the actual game state and valid num_turns
+                "thread_id": f"{game_state.get('game_id', 'default')}-{game_state.get('num_turns', '0')}",
                 "metadata": {
                     "player_color": self.player_color,
                     "turn_number": game_state.get("turn_number"),
