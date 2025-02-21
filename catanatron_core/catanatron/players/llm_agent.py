@@ -9,7 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_mistralai import ChatMistralAI
+from langchain_xai import ChatXAI
 from catanatron.models.enums import Action, ActionType
 from catanatron.models.message import Message, MessageType
 from dotenv import load_dotenv
@@ -62,6 +62,7 @@ def log_prompt(prompt: str):
 
 def log_response(response: str):
     """Log the agent's response in a pretty format"""
+    # print(response)
     # Pattern to match content between content=' and ', with optional spaces
     pattern = r"content='([^']*?)'(?:,\s*additional_kwargs|\s*,|\s*\})"
     matches = re.findall(pattern, response)
@@ -95,6 +96,9 @@ elif project_env.exists():
     load_dotenv(project_env)
 else:
     print("Warning: No .env file found in package or project root")
+
+# Add debug print
+print(f"ANTHROPIC_API_KEY loaded: {'ANTHROPIC_API_KEY' in os.environ}")
 
 class CatanMemory:
     """Stores game state and strategy information"""
@@ -231,26 +235,26 @@ class CatanAgent:
             if provider == "anthropic":
                 if not os.getenv("ANTHROPIC_API_KEY"):
                     raise ValueError("ANTHROPIC_API_KEY not found in environment")
-                self.llm = ChatAnthropic(model="claude-3-sonnet-20240229")
+                self.llm = ChatAnthropic(model="claude-3-5-sonnet-20241022", api_key=os.getenv("ANTHROPIC_API_KEY"))
                 logger.info("Initialized Anthropic Claude 3 Sonnet")
             
             elif provider == "openai":
                 if not os.getenv("OPENAI_API_KEY"):
                     raise ValueError("OPENAI_API_KEY not found in environment")
-                self.llm = ChatOpenAI(model="gpt-4o-mini")
+                self.llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
                 logger.info("Initialized OpenAI GPT-4o-mini")
             
             elif provider == "google":
                 if not os.getenv("GOOGLE_API_KEY"):
                     raise ValueError("GOOGLE_API_KEY not found in environment")
-                self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash")
+                self.llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", api_key=os.getenv("GOOGLE_API_KEY"))
                 logger.info("Initialized Google Gemini")
             
-            elif provider == "mistral":
-                if not os.getenv("MISTRAL_API_KEY"):
-                    raise ValueError("MISTRAL_API_KEY not found in environment")
-                self.llm = ChatMistralAI(model="mistral-large-latest")
-                logger.info("Initialized Mistral Large")
+            elif provider == "xai":
+                if not os.getenv("XAI_API_KEY"):
+                    raise ValueError("XAI_API_KEY not found in environment")
+                self.llm = ChatXAI(model="grok-beta", api_key=os.getenv("XAI_API_KEY"))
+                logger.info("Initialized XAI model")
             
             else:
                 raise ValueError(f"Unsupported provider: {provider}")
@@ -432,12 +436,10 @@ Remember:
         logger.debug(f"Generated prompt: {prompt}")
         return prompt
 
-
-
 def filter_messages(messages, max_ai_messages=10):
     """
     Filter the message history to include the last max_ai_messages AIMessages
-    and their corresponding ToolMessages.
+    and their corresponding ToolMessages, ensuring no empty messages.
 
     Args:
         messages (list): List of messages in the conversation history.
@@ -446,36 +448,64 @@ def filter_messages(messages, max_ai_messages=10):
     Returns:
         list: Filtered list of messages.
     """
+    def is_valid_content(content):
+        """Helper to validate message content which can be string or list."""
+        if content is None:
+            return False
+        if isinstance(content, str):
+            return content.strip() != ''
+        if isinstance(content, list):
+            return len(content) > 0 and all(isinstance(item, str) and item.strip() != '' for item in content)
+        return False
+
+    # Filter out any messages with empty content
+    valid_messages = [m for m in messages if (
+        hasattr(m, 'content') and 
+        is_valid_content(m.content)
+    )]
+
     # Get the last max_ai_messages AIMessages
-    ai_messages = [m for m in messages if isinstance(m, AIMessage)][-max_ai_messages:]
+    ai_messages = [m for m in valid_messages if isinstance(m, AIMessage)][-max_ai_messages:]
 
     # Collect tool_call_ids from these AIMessages
     tool_call_ids = set()
     for ai_msg in ai_messages:
         if hasattr(ai_msg, 'tool_calls') and ai_msg.tool_calls:
             for tool_call in ai_msg.tool_calls:
-                tool_call_ids.add(tool_call['id'])
+                if isinstance(tool_call, dict) and 'id' in tool_call:
+                    tool_call_ids.add(tool_call['id'])
 
     # Get ToolMessages that correspond to these tool_call_ids
-    tool_messages = [m for m in messages if isinstance(m, ToolMessage) and m.tool_call_id in tool_call_ids]
+    tool_messages = [
+        m for m in valid_messages 
+        if isinstance(m, ToolMessage) and 
+        hasattr(m, 'tool_call_id') and 
+        m.tool_call_id in tool_call_ids
+    ]
 
-    # Combine and preserve order (only AIMessage and ToolMessage)
-    filtered_messages = [m for m in messages if (isinstance(m, AIMessage) and m in ai_messages) or (isinstance(m, ToolMessage) and m in tool_messages)]
+    # Combine and preserve order
+    filtered_messages = [
+        m for m in valid_messages 
+        if (isinstance(m, AIMessage) and m in ai_messages) or 
+           (isinstance(m, ToolMessage) and m in tool_messages)
+    ]
+
     return filtered_messages
 
 class LimitedMemorySaver(MemorySaver):
     """
     A memory saver that limits the conversation history to the last max_ai_messages AIMessages
-    and their corresponding ToolMessages.
+    and their corresponding ToolMessages, ensuring no empty messages.
     """
     def __init__(self, max_responses=10):
         super().__init__()
         self.max_ai_messages = max_responses
+        self._response_queues = {}
+        self._step_counters = {}
 
     def put(self, config: dict, checkpoint: dict, metadata: dict, new_versions: Any) -> dict:
         """
-        Save the checkpoint, filtering the message history to include only the last
-        max_ai_messages AIMessages and their corresponding ToolMessages.
+        Save the checkpoint, filtering the message history to include only valid messages.
 
         Args:
             config (dict): Configuration dictionary.
@@ -486,40 +516,81 @@ class LimitedMemorySaver(MemorySaver):
         Returns:
             dict: Updated configuration.
         """
-        if "channel_values" in checkpoint and "messages" in checkpoint["channel_values"]:
-            messages = checkpoint["channel_values"]["messages"]
-            filtered_messages = filter_messages(messages, self.max_ai_messages)
-            checkpoint["channel_values"]["messages"] = filtered_messages
+        try:
+            if "channel_values" in checkpoint and "messages" in checkpoint["channel_values"]:
+                messages = checkpoint["channel_values"]["messages"]
+                filtered_messages = filter_messages(messages, self.max_ai_messages)
+                
+                # Ensure we have at least one valid message
+                if not filtered_messages:
+                    logger.warning("No valid messages found after filtering")
+                    return config
+                    
+                checkpoint["channel_values"]["messages"] = filtered_messages
 
-        # Delegate to parent MemorySaver's put method to handle storage
-        return super().put(config, checkpoint, metadata, new_versions)
+                # Update response queue for this thread
+                thread_id = config["configurable"]["thread_id"]
+                if thread_id not in self._response_queues:
+                    self._response_queues[thread_id] = deque(maxlen=self.max_ai_messages)
+                self._response_queues[thread_id].extend(filtered_messages)
 
-    # Keep get_tuple and list as inherited from MemorySaver unless customization is needed
-    # These methods will work with the filtered messages stored by put Yield nothing if no responses exist
-    # def get_tuple(self, config: dict) -> Optional[CheckpointTuple]:
-    #     thread_id = config["configurable"]["thread_id"]
-    #     if thread_id not in self._response_queues or not self._response_queues[thread_id]:
-    #         return None
-        
-    #     # Get current step (default to 0 if not yet set)
-    #     step = self._step_counters.get(thread_id, 0)
-        
-    #     # Construct checkpoint from the latest responses
-    #     messages = list(self._response_queues[thread_id])
-    #     checkpoint = empty_checkpoint()
-    #     checkpoint["channel_values"] = {"messages": messages}
-    #     checkpoint["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00", time.gmtime())
-        
-    #     return CheckpointTuple(
-    #         config=config,
-    #         checkpoint=checkpoint,
-    #         metadata={"step": step},  # Include step in metadata
-    #         parent_config=None,
-    #     )
+                # Update step counter
+                if thread_id not in self._step_counters:
+                    self._step_counters[thread_id] = 0
+                self._step_counters[thread_id] += 1
 
+            return super().put(config, checkpoint, metadata, new_versions)
+        except Exception as e:
+            logger.error(f"Error in put: {str(e)}", exc_info=True)
+            return config
 
-    # def list(self, config: dict, *, filter: Optional[dict] = None, before: Optional[dict] = None, limit: Optional[int] = None) -> Iterator[CheckpointTuple]:
-    #     thread_id = config["configurable"]["thread_id"]
-    #     if thread_id in self._response_queues and self._response_queues[thread_id]:
-    #         yield self.get_tuple(config)
-    #     # Yield nothing if no responses exist
+    def get_tuple(self, config: dict) -> Optional[CheckpointTuple]:
+        """Get the checkpoint tuple for the current conversation state."""
+        try:
+            thread_id = config["configurable"]["thread_id"]
+            if thread_id not in self._response_queues or not self._response_queues[thread_id]:
+                return None
+            
+            step = self._step_counters.get(thread_id, 0)
+            messages = list(self._response_queues[thread_id])
+            
+            # Filter out any invalid messages using the same validation as filter_messages
+            def is_valid_content(content):
+                if content is None:
+                    return False
+                if isinstance(content, str):
+                    return content.strip() != ''
+                if isinstance(content, list):
+                    return len(content) > 0 and all(isinstance(item, str) and item.strip() != '' for item in content)
+                return False
+                
+            valid_messages = [
+                m for m in messages 
+                if hasattr(m, 'content') and is_valid_content(m.content)
+            ]
+            
+            if not valid_messages:
+                return None
+                
+            checkpoint = empty_checkpoint()
+            checkpoint["channel_values"] = {"messages": valid_messages}
+            checkpoint["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00", time.gmtime())
+            
+            return CheckpointTuple(
+                config=config,
+                checkpoint=checkpoint,
+                metadata={"step": step},
+                parent_config=None,
+            )
+        except Exception as e:
+            logger.error(f"Error in get_tuple: {str(e)}", exc_info=True)
+            return None
+
+    def list(self, config: dict, *, filter: Optional[dict] = None, before: Optional[dict] = None, limit: Optional[int] = None) -> Iterator[CheckpointTuple]:
+        """List available checkpoints for the conversation."""
+        try:
+            checkpoint_tuple = self.get_tuple(config)
+            if checkpoint_tuple is not None:
+                yield checkpoint_tuple
+        except Exception as e:
+            logger.error(f"Error in list: {str(e)}", exc_info=True)
