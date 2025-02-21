@@ -1,8 +1,10 @@
+from collections import deque
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langgraph.checkpoint.base import CheckpointTuple, empty_checkpoint
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
@@ -19,6 +21,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 import re
+import time
+from typing import Optional, Iterator, Dict, Any
 
 # Configure logging
 logging.basicConfig(
@@ -220,7 +224,7 @@ class CatanAgent:
             logger.warning("LANGSMITH_API_KEY not found, observability disabled")
             self.langsmith_client = None
 
-        self.memory_saver = MemorySaver()
+        self.memory_saver = LimitedMemorySaver(max_responses=10)
         
         # Initialize LLM based on provider
         try:
@@ -271,7 +275,7 @@ class CatanAgent:
         
         config = {
             "configurable": {
-                "thread_id": str(game_state.get("game_id", "default")),
+                "thread_id": f"{game_state.get('game_id', 'default')}-{game_state.get('turn_number', '0')}",
                 "metadata": {
                     "player_color": self.player_color,
                     "turn_number": game_state.get("turn_number"),
@@ -346,6 +350,16 @@ class CatanAgent:
             for card, details in dev_cards.items()
         )
 
+        # Format recent actions by other players
+        recent_actions = game_state.get("recent_actions", [])
+        recent_actions_text = ""
+        if recent_actions:
+            recent_actions_list = "\n".join(
+                f"- {action.color} player: {action.action_type} {action.value if action.value else ''}"
+                for action in recent_actions
+            )
+            recent_actions_text = f"\nRecent Actions by Other Players:\n{recent_actions_list}\n"
+
         # Format buildings in a readable way
         buildings = game_state["buildings"]
         building_list = "\n".join([
@@ -361,25 +375,6 @@ class CatanAgent:
         vp = game_state["victory_points"]
         vp_text = f"You have {vp['total']} victory points"
 
-        # Format recent actions by other players
-        recent_actions = game_state.get("recent_actions", [])
-        recent_actions_text = ""
-        if recent_actions:
-            recent_actions_list = "\n".join(
-                f"- {action.color} player: {action.action_type} {action.value if action.value else ''}"
-                for action in recent_actions
-            )
-            recent_actions_text = f"\nRecent Actions by Other Players:\n{recent_actions_list}\n"
-
-        # Format tools used in current decision
-        tools_used_text = ""
-        if self.current_decision_tools:
-            tools_list = "\n".join(
-                f"- {tool_name}: {tool_value}" 
-                for tool_name, tool_value in self.current_decision_tools
-            )
-            tools_used_text = f"\nTools Used in Current Decision:\n{tools_list}\n"
-
         # Building costs reference
         building_costs = """
 Building Costs:
@@ -392,7 +387,9 @@ Building Costs:
 You are playing Settlers of Catan. You need to choose your next action.
 
 Current Game State:
-{vp_text}{recent_actions_text}{tools_used_text}
+{vp_text}
+
+{recent_actions_text}
 
 Your Resources:
 {resource_list}
@@ -421,15 +418,15 @@ Available Actions:
 What action should I take? Consider the game state, memory, and available actions carefully.
 You have these tools available:
 - select_action: Choose an action from the numbered list above by providing the index number
-- update_game_memory: Store important information about the game state
-- update_strategy: Remember effective strategies for future reference
+- update_game_memory: Store important information about the game that will help you.
+- update_strategy: Remember effective strategies for future reference. persists across games.
 
 First, analyze the situation and update your memory if needed. Second, reason through the best course of action.
 Then, you MUST select an action from the available options using the select_action tool with a valid index number.
 
 Remember:
-1. You MUST use select_action to choose your action
-2. The index must be a valid number from the list above
+1. You will use select_action to choose your action after analyzing the situation and updating your memory if needed.
+2. The index must be a valid number from the list above - an exact match.
 3. You cannot skip making a decision
 """
 # todo: add back in to tool list
@@ -437,3 +434,95 @@ Remember:
         
         logger.debug(f"Generated prompt: {prompt}")
         return prompt
+
+
+
+def filter_messages(messages, max_ai_messages=10):
+    """
+    Filter the message history to include the last max_ai_messages AIMessages
+    and their corresponding ToolMessages.
+
+    Args:
+        messages (list): List of messages in the conversation history.
+        max_ai_messages (int): Maximum number of AIMessages to retain.
+
+    Returns:
+        list: Filtered list of messages.
+    """
+    # Get the last max_ai_messages AIMessages
+    ai_messages = [m for m in messages if isinstance(m, AIMessage)][-max_ai_messages:]
+
+    # Collect tool_call_ids from these AIMessages
+    tool_call_ids = set()
+    for ai_msg in ai_messages:
+        if hasattr(ai_msg, 'tool_calls') and ai_msg.tool_calls:
+            for tool_call in ai_msg.tool_calls:
+                tool_call_ids.add(tool_call['id'])
+
+    # Get ToolMessages that correspond to these tool_call_ids
+    tool_messages = [m for m in messages if isinstance(m, ToolMessage) and m.tool_call_id in tool_call_ids]
+
+    # Combine and preserve order (only AIMessage and ToolMessage)
+    filtered_messages = [m for m in messages if (isinstance(m, AIMessage) and m in ai_messages) or (isinstance(m, ToolMessage) and m in tool_messages)]
+    return filtered_messages
+
+class LimitedMemorySaver(MemorySaver):
+    """
+    A memory saver that limits the conversation history to the last max_ai_messages AIMessages
+    and their corresponding ToolMessages.
+    """
+    def __init__(self, max_responses=10):
+        super().__init__()
+        self.max_ai_messages = max_responses
+
+    def put(self, config: dict, checkpoint: dict, metadata: dict, new_versions: Any) -> dict:
+        """
+        Save the checkpoint, filtering the message history to include only the last
+        max_ai_messages AIMessages and their corresponding ToolMessages.
+
+        Args:
+            config (dict): Configuration dictionary.
+            checkpoint (dict): Checkpoint data containing channel_values.
+            metadata (dict): Metadata dictionary.
+            new_versions (Any): New versions data.
+
+        Returns:
+            dict: Updated configuration.
+        """
+        if "channel_values" in checkpoint and "messages" in checkpoint["channel_values"]:
+            messages = checkpoint["channel_values"]["messages"]
+            filtered_messages = filter_messages(messages, self.max_ai_messages)
+            checkpoint["channel_values"]["messages"] = filtered_messages
+
+        # Delegate to parent MemorySaver's put method to handle storage
+        return super().put(config, checkpoint, metadata, new_versions)
+
+    # Keep get_tuple and list as inherited from MemorySaver unless customization is needed
+    # These methods will work with the filtered messages stored by put Yield nothing if no responses exist
+    # def get_tuple(self, config: dict) -> Optional[CheckpointTuple]:
+    #     thread_id = config["configurable"]["thread_id"]
+    #     if thread_id not in self._response_queues or not self._response_queues[thread_id]:
+    #         return None
+        
+    #     # Get current step (default to 0 if not yet set)
+    #     step = self._step_counters.get(thread_id, 0)
+        
+    #     # Construct checkpoint from the latest responses
+    #     messages = list(self._response_queues[thread_id])
+    #     checkpoint = empty_checkpoint()
+    #     checkpoint["channel_values"] = {"messages": messages}
+    #     checkpoint["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00", time.gmtime())
+        
+    #     return CheckpointTuple(
+    #         config=config,
+    #         checkpoint=checkpoint,
+    #         metadata={"step": step},  # Include step in metadata
+    #         parent_config=None,
+    #     )
+
+
+    # def list(self, config: dict, *, filter: Optional[dict] = None, before: Optional[dict] = None, limit: Optional[int] = None) -> Iterator[CheckpointTuple]:
+    #     thread_id = config["configurable"]["thread_id"]
+    #     if thread_id in self._response_queues and self._response_queues[thread_id]:
+    #         yield self.get_tuple(config)
+    #     # Yield nothing if no responses exist

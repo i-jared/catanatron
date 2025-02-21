@@ -91,12 +91,11 @@ class LLMPlayer(Player):
             # Start from the most recent action
             actions_iter = reversed(game.state.actions)
             last_turn_index = None
+            seen_colors = set()
+            current_color = None
+            num_players = len(game.state.players)
             
             for action in actions_iter:
-                # Skip own actions
-                if action.color == self.color:
-                    continue
-                    
                 # If we haven't seen a turn index yet, set it
                 if last_turn_index is None:
                     last_turn_index = game.state.current_turn_index
@@ -105,10 +104,20 @@ class LLMPlayer(Player):
                 current_player_index = game.state.colors.index(action.color)
                 if current_player_index > last_turn_index:
                     break
-                    
-                # Add the action to our list
-                recent_actions.append(action)
                 
+                # If this is a new color and we've already seen it before, skip
+                if action.color != current_color and action.color in seen_colors:
+                    continue
+                
+                # Add the action and update tracking
+                recent_actions.append(action)
+                seen_colors.add(action.color)
+                current_color = action.color
+                
+                # If we've seen actions from all other players, stop
+                if len(seen_colors) == num_players - 1: 
+                    break
+            
             # Reverse the list so actions are in chronological order
             recent_actions.reverse()
         
