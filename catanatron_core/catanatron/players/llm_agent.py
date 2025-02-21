@@ -237,8 +237,8 @@ class CatanAgent:
             elif provider == "openai":
                 if not os.getenv("OPENAI_API_KEY"):
                     raise ValueError("OPENAI_API_KEY not found in environment")
-                self.llm = ChatOpenAI(model="gpt-4-turbo-preview")
-                logger.info("Initialized OpenAI GPT-4 Turbo")
+                self.llm = ChatOpenAI(model="gpt-4o-mini")
+                logger.info("Initialized OpenAI GPT-4o-mini")
             
             elif provider == "google":
                 if not os.getenv("GOOGLE_API_KEY"):
@@ -400,10 +400,6 @@ Your Development Cards:
 
 Your Buildings:
 {building_list}
-
-Turn State:
-- Have you rolled? {game_state['turn_state']['has_rolled']}
-- Have you played a development card this turn? {game_state['turn_state']['has_played_development_card']}
 
 {building_costs}
 

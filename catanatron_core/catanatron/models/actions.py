@@ -73,7 +73,6 @@ def generate_playable_actions(state) -> List[Action]:
             actions.extend(road_building_possibilities(state, color))
             actions.extend(settlement_possibilities(state, color))
             actions.extend(city_possibilities(state, color))
-
             can_buy_dev_card = (
                 player_can_afford_dev_card(state, color)
                 and len(state.development_listdeck) > 0
@@ -82,6 +81,7 @@ def generate_playable_actions(state) -> List[Action]:
                 actions.append(Action(color, ActionType.BUY_DEVELOPMENT_CARD, None))
 
             # Trade
+            # actions.extend(domestic_trade_possibilities(state, color))
             actions.extend(maritime_trade_possibilities(state, color))
         return actions
     elif action_prompt == ActionPrompt.DISCARD:
@@ -232,7 +232,6 @@ def robber_possibilities(state, color) -> List[Action]:
                         color, ActionType.MOVE_ROBBER, (coordinate, enemy_color, None)
                     )
                 )
-
     return actions
 
 
