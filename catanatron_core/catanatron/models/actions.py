@@ -81,7 +81,7 @@ def generate_playable_actions(state) -> List[Action]:
                 actions.append(Action(color, ActionType.BUY_DEVELOPMENT_CARD, None))
 
             # Trade
-            # actions.extend(domestic_trade_possibilities(state, color))
+            actions.extend(domestic_trade_possibilities(state, color))
             actions.extend(maritime_trade_possibilities(state, color))
         return actions
     elif action_prompt == ActionPrompt.DISCARD:
@@ -273,6 +273,28 @@ def ncr(n, r):
     denom = reduce(op.mul, range(1, r + 1), 1)
     return numer // denom
 
+def domestic_trade_possibilities(state, color) -> List[Action]:
+    hand_freqdeck = [
+        player_num_resource_cards(state, color, resource) for resource in RESOURCES
+    ]
+    trade_offers = []
+    
+    # For each resource I have
+    for resource_i_have in RESOURCES:
+        if hand_freqdeck[RESOURCES.index(resource_i_have)] > 0:  # If I have at least 1
+            # Try trading it for each other resource
+            for resource_i_want in RESOURCES:
+                if resource_i_have != resource_i_want:  # Don't trade for same resource
+                    # Convert (resource_i_have, resource_i_want) into 10-tuple format
+                    offered = [0] * 5
+                    asking = [0] * 5
+                    offered[RESOURCES.index(resource_i_have)] = 1
+                    asking[RESOURCES.index(resource_i_want)] = 1
+                    trade_offers.append(tuple(offered + asking))
+
+    return list(
+        map(lambda t: Action(color, ActionType.OFFER_TRADE, t), trade_offers)
+    )
 
 def maritime_trade_possibilities(state, color) -> List[Action]:
     hand_freqdeck = [

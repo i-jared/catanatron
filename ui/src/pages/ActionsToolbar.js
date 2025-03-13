@@ -175,21 +175,28 @@ function PlayButtons() {
     },
   ];
 
-  const tradeActions = state.gameState.current_playable_actions.filter(
+  const maritimeTradeActions = state.gameState.current_playable_actions.filter(
     (action) => action[1] === "MARITIME_TRADE"
   );
+  const domesticTradeActions = state.gameState.current_playable_actions.filter(
+    (action) => action[1] === "OFFER_TRADE"
+  );
+
   const tradeItems = React.useMemo(() => {
-    const items = tradeActions.map((action) => {
-      const label = humanizeTradeAction(action);
-      return {
-        label: label,
-        disabled: false,
-        onClick: carryOutAction(action),
-      };
-    });
-  
-    return items.sort((a, b) => a.label.localeCompare(b.label));
-  }, [tradeActions, carryOutAction]);
+    const maritimeItems = maritimeTradeActions.map((action) => ({
+      label: `Maritime: ${humanizeTradeAction(action)}`,
+      disabled: false,
+      onClick: carryOutAction(action),
+    }));
+
+    const domesticItems = domesticTradeActions.map((action) => ({
+      label: `Trade: ${humanizeTradeAction(action)}`,
+      disabled: false,
+      onClick: carryOutAction(action),
+    }));
+
+    return [...maritimeItems, ...domesticItems].sort((a, b) => a.label.localeCompare(b.label));
+  }, [maritimeTradeActions, domesticTradeActions, carryOutAction]);
 
   const setIsMovingRobber = useCallback(() => {
     dispatch({ type: ACTIONS.SET_IS_MOVING_ROBBER });

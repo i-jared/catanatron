@@ -375,6 +375,7 @@ Other than that here is also a list of ideas:
 
 
 # TODO:
-- [ ] switch from langgraph to custom solution
+- [x] switch from langgraph to custom solution
 - [ ] implement trading between bots
 - [ ] implement talking between bots
+- [ ] give them vision

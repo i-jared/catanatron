@@ -39,12 +39,17 @@ def is_valid_trade(action_value):
     """
     offering = action_value[:5]
     asking = action_value[5:]
-    if sum(offering) == 0 or sum(asking) == 0:
-        return False  # cant give away cards
-
-    for i, j in zip(offering, asking):
-        if i > 0 and j > 0:
-            return False  # cant trade same resources
+    
+    # Must offer exactly one resource and ask for exactly one resource
+    if sum(offering) != 1 or sum(asking) != 1:
+        return False  # Must be 1:1 trade
+        
+    # Can't trade same resource type
+    offered_index = offering.index(1)
+    asked_index = asking.index(1)
+    if offered_index == asked_index:
+        return False  # Can't trade same resource type
+        
     return True
 
 

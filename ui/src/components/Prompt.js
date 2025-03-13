@@ -90,8 +90,23 @@ export function humanizeAction(gameState, action) {
 }
 
 export function humanizeTradeAction(action) {
-  const out = action[2].slice(0, 4).filter((resource) => resource !== null);
-  return `${out.length} ${out[0]} => ${action[2][4]}`;
+  if (action[1] === "MARITIME_TRADE") {
+    const out = action[2].slice(0, 4).filter((resource) => resource !== null);
+    return `${out.length} ${out[0]} => ${action[2][4]}`;
+  } else if (action[1] === "OFFER_TRADE") {
+    // Find the offered resource (first 5 elements)
+    const offered = action[2].slice(0, 5);
+    const offeredIndex = offered.findIndex(x => x === 1);
+    const offeredResource = RESOURCES[offeredIndex];
+    
+    // Find the asked resource (last 5 elements)
+    const asked = action[2].slice(5, 10);
+    const askedIndex = asked.findIndex(x => x === 1);
+    const askedResource = RESOURCES[askedIndex];
+    
+    return `1 ${offeredResource} => 1 ${askedResource}`;
+  }
+  return "Unknown trade";
 }
 
 function humanizePrompt(current_prompt) {
