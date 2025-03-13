@@ -1,11 +1,7 @@
-import random
-import asyncio
-import uuid
-
 from catanatron.models.player import Player
 from catanatron.models.actions import ActionType
 from catanatron.models.message import Message, MessageType
-from .llm_agent import CatanAgent
+from .llm_agent import LLMAgent
 
 
 class LLMPlayer(Player):
@@ -15,7 +11,7 @@ class LLMPlayer(Player):
     """
     def __init__(self, color):
         super().__init__(color)
-        self.agent = CatanAgent(color, provider="google")
+        self.agent = LLMAgent(color, provider="google")
 
     async def decide(self, game, playable_actions):
         # Process any pending messages
