@@ -1,4 +1,4 @@
-FROM node:16-alpine
+FROM node:22-alpine
 
 # Why do we install these?
 # RUN apk add --no-cache --virtual .gyp python make g++ 
@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package.json /app
 COPY package-lock.json /app
 
-RUN npm install
+RUN npx --yes npm@11.19.0 ci --no-audit
 
 COPY . /app
 

@@ -1,12 +1,12 @@
-FROM python:3.8
+FROM python:3.11-slim
 
 WORKDIR /app
+ENV PYTHONPATH=/app/catanatron_core:/app/catanatron_server
 
 RUN pip install --upgrade pip
 
 COPY . .
-RUN pip install -e catanatron_core
-RUN pip install -e catanatron_server
+RUN pip install --no-cache-dir -r requirements.security.lock.txt && pip check
 
 EXPOSE 5000
 

@@ -16,11 +16,17 @@ markdown-it-py==2.2.0
 MarkupSafe==2.1.2
 mdurl==0.1.2
 networkx==3.0
-numpy==1.24.2
+numpy>=1.26.4,<3
 psycopg2-binary==2.9.5
 Pygments==2.20.0
 rich==13.3.2
 six==1.16.0
 SQLAlchemy==2.0.7
-typing_extensions==4.5.0
+typing_extensions>=4.12.2
 Werkzeug==3.1.9
+
+# Runtime imports used by the current LLM players.
+google-genai==1.75.0
+langsmith==0.14.12
+httpx==0.28.1
+python-dotenv==1.2.4
