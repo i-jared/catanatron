@@ -26,7 +26,7 @@ typing_extensions>=4.12.2
 Werkzeug==3.1.9
 
 # Runtime imports used by the current LLM players.
-google-genai>=1.2.0,<2
-langsmith>=0.6.3,<1
-httpx>=0.28.1,<1
-python-dotenv>=1.2.2,<2
+google-genai==1.75.0
+langsmith==0.14.12
+httpx==0.28.1
+python-dotenv==1.2.4

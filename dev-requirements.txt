@@ -1,7 +1,7 @@
 # Runtime dependencies stay in one reviewed manifest.
 -r requirements.txt
-black>=24.3,<27
-coverage>=7.13,<8
-coveralls>=4,<5
-pytest>=8.4,<10
-pytest-benchmark>=5.1,<6
+black==26.10.1
+coverage==7.17.0
+coveralls==4.1.0
+pytest==9.1.1
+pytest==9.1.1
